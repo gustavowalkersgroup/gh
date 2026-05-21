@@ -1,0 +1,4 @@
+instaloader>=4.15
+anthropic>=0.103
+python-dotenv>=1.0
+rich>=13.0
