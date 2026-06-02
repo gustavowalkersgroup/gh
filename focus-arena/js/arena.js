@@ -224,64 +224,74 @@ window.FA = window.FA || {};
       this._raf = requestAnimationFrame(() => this._loop());
     }
 
-    // Fundo procedural: formas abstratas neon que vagam, giram e pulsam.
-    // Geradas por rodada; intensidade/velocidade crescem com o combo (dopamina).
+    // Rastros "light cycle" que cruzam a tela (estilo TRON).
     _makeBgShapes() {
-      const palette = ["#3da5ff", "#6c5ce7", "#2ec27e", "#ffd24a", "#ff8a3d", "#ff3b5c", "#00e0d1", "#ff5cf0"];
-      const kinds = ["blob", "poly", "ring", "tri"];
-      const shapes = [];
-      for (let i = 0; i < 16; i++) {
-        shapes.push({
-          kind: kinds[(Math.random() * kinds.length) | 0],
-          x: Math.random(), y: Math.random(),
-          vx: rnd(-0.03, 0.03), vy: rnd(-0.03, 0.03),
-          r: rnd(40, 170), sides: 3 + ((Math.random() * 4) | 0),
-          rot: rnd(0, TAU), vr: rnd(-0.5, 0.5),
-          hue: palette[(Math.random() * palette.length) | 0],
-          ph: rnd(0, TAU), pulse: rnd(0.3, 1.2),
+      const hues = ["#00e5ff", "#39ff14", "#ff2bd6", "#ffae00", "#3da5ff"];
+      const runners = [];
+      for (let i = 0; i < 6; i++) {
+        runners.push({
+          axis: Math.random() < 0.5 ? "h" : "v",
+          pos: rnd(0.08, 0.92),
+          t: Math.random(),
+          speed: rnd(0.18, 0.5) * (Math.random() < 0.5 ? 1 : -1),
+          hue: hues[i % hues.length],
+          len: rnd(0.08, 0.2),
         });
       }
-      return shapes;
+      return runners;
     }
 
+    // Fundo TRON procedural: grade em perspectiva (chão + teto), horizonte
+    // brilhante e rastros neon. Velocidade/cor reagem ao combo (dopamina).
     _renderBg() {
       const ctx = this.ctx, w = this.w, h = this.h;
       const time = (now() - this.startTs) / 1000;
       const combo = this.combo;
-      // base escura translúcida pra dar profundidade
-      ctx.fillStyle = "rgba(8,11,17,0.5)"; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#05070d"; ctx.fillRect(0, 0, w, h);
+
+      const speed = 0.25 + Math.min(1.7, combo * 0.05);
+      const hue = combo >= 24 ? "#ff7a1a" : combo >= 12 ? "#ff2bd6" : "#00e5ff";
+      const horizon = h * 0.5, cx = w / 2, N = 14, M = 10, spacing = (w / M) * 1.4;
+
       ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const intensity = 0.09 + Math.min(0.18, combo * 0.01);
-      const speed = 1 + Math.min(2.2, combo * 0.06);
-      for (const s of (this.bgShapes || [])) {
-        const px = ((s.x + s.vx * time * speed) % 1 + 1) % 1;
-        const py = ((s.y + s.vy * time * speed) % 1 + 1) % 1;
-        const cx = px * w, cy = py * h;
-        const rr = s.r * (1 + 0.28 * Math.sin(time * s.pulse + s.ph));
-        const rot = s.rot + s.vr * time * speed;
-        ctx.globalAlpha = intensity;
-        ctx.strokeStyle = s.hue; ctx.fillStyle = s.hue;
-        if (s.kind === "blob") {
-          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
-          g.addColorStop(0, s.hue); g.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = g; ctx.globalAlpha = intensity * 1.5;
-          ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill();
-        } else if (s.kind === "ring") {
-          ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, rr, rot, rot + Math.PI * 1.4); ctx.stroke();
-        } else {
-          const sides = s.kind === "tri" ? 3 : s.sides;
-          ctx.lineWidth = 3; ctx.beginPath();
-          for (let k = 0; k < sides; k++) {
-            const a = rot + (k / sides) * TAU;
-            const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
-            if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-          }
-          ctx.closePath(); ctx.stroke();
+      ctx.lineCap = "round";
+      const s = (time * speed) % 1;
+      for (const dir of [1, -1]) {            // 1 = chão, -1 = teto (espelhado)
+        const endY = dir === 1 ? h : 0;
+        // verticais convergindo pro ponto de fuga (sem glow, são muitas)
+        ctx.shadowBlur = 0; ctx.strokeStyle = hue; ctx.globalAlpha = 0.18; ctx.lineWidth = 1.2;
+        for (let j = -M; j <= M; j++) {
+          ctx.beginPath(); ctx.moveTo(cx, horizon); ctx.lineTo(cx + j * spacing, endY); ctx.stroke();
+        }
+        // horizontais que "se aproximam" (com glow)
+        ctx.shadowColor = hue; ctx.shadowBlur = 8;
+        for (let i = 0; i < N; i++) {
+          let d = (i + s) / N; d = d * d;       // perspectiva: agrupa perto do horizonte
+          const y = horizon + (endY - horizon) * d;
+          ctx.globalAlpha = 0.10 + 0.55 * d; ctx.lineWidth = 1 + d * 1.8;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
         }
       }
+      // horizonte brilhante
+      ctx.shadowBlur = 18; ctx.shadowColor = hue; ctx.strokeStyle = hue; ctx.globalAlpha = 0.95; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(0, horizon); ctx.lineTo(w, horizon); ctx.stroke();
+
+      // rastros neon (light cycles)
+      for (const rn of (this.bgShapes || [])) {
+        rn.t += rn.speed * 0.004 * (1 + combo * 0.05);
+        const tt = ((rn.t % 1) + 1) % 1, sg = Math.sign(rn.speed) || 1;
+        let x, y, x2, y2;
+        if (rn.axis === "h") { y = rn.pos * h; x = tt * w; x2 = x - sg * rn.len * w; y2 = y; }
+        else { x = rn.pos * w; y = tt * h; y2 = y - sg * rn.len * h; x2 = x; }
+        const grad = ctx.createLinearGradient(x, y, x2, y2);
+        grad.addColorStop(0, rn.hue); grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.strokeStyle = grad; ctx.shadowColor = rn.hue; ctx.shadowBlur = 14; ctx.globalAlpha = 0.9; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.fillStyle = rn.hue;
+        ctx.beginPath(); ctx.arc(x, y, 2.6, 0, TAU); ctx.fill();
+      }
       ctx.restore();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
     }
 
     _render(d) {
@@ -290,9 +300,15 @@ window.FA = window.FA || {};
       this._renderBg();
 
       this.targets.forEach((tg) => {
-        const age = (t - tg.born) / tg.life;
-        const grow = age < 0.18 ? age / 0.18 : 1;
-        const fade = age > 0.72 ? 1 - (age - 0.72) / 0.28 : 1;
+        const elapsed = t - tg.born;
+        // crescer é baseado no tempo desde que surgiu (não na vida), pra funcionar
+        // também com alvos de vida infinita (modo "aparece ao acertar").
+        const grow = elapsed < 180 ? elapsed / 180 : 1;
+        let fade = 1;
+        if (isFinite(tg.life)) {
+          const age = elapsed / tg.life;
+          if (age > 0.72) fade = 1 - (age - 0.72) / 0.28;
+        }
         const r = tg.r * grow;
         ctx.globalAlpha = Math.max(0, fade);
 
