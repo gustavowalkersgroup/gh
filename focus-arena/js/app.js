@@ -37,6 +37,43 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ---------- Alertas em segundo plano ----------
+  // Em HTTP (sem secure context) a Notification API costuma não funcionar; o título
+  // da aba é o sinal confiável que funciona em qualquer contexto.
+  const ORIG_TITLE = document.title;
+  let _titleFlash = null;
+  function setFocusTitle(left) { document.title = fmtClock(left) + " · 🎯 Focus Arena"; }
+  function stopTitleFlash() {
+    if (_titleFlash) { clearInterval(_titleFlash); _titleFlash = null; }
+    document.title = ORIG_TITLE;
+  }
+  function flashTitle(msg) {
+    stopTitleFlash();
+    let on = false;
+    document.title = msg;
+    _titleFlash = setInterval(() => { document.title = (on = !on) ? ORIG_TITLE : msg; }, 1200);
+  }
+  function requestNotify() {
+    try {
+      if (window.isSecureContext && "Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    } catch (e) {}
+  }
+  function maybeNotify(title, body) {
+    try {
+      if (window.isSecureContext && "Notification" in window && Notification.permission === "granted") {
+        const n = new Notification(title, { body: body || "" });
+        setTimeout(() => { try { n.close(); } catch (e) {} }, 8000);
+      }
+    } catch (e) {}
+  }
+  function alertBackground(msg, body) {
+    if (document.hidden) flashTitle(msg);
+    maybeNotify(msg, body);
+    if (FA.FX) FA.FX.sfx("levelup");
+  }
+
   // ---------- HUD ----------
   function renderHud() {
     const li = State.levelInfo();
@@ -178,6 +215,7 @@
     $("#bossName").textContent = "BOSS · " + boss.name;
     $("#bossHpFill").style.width = "100%";
     if (FA.FX) FA.FX.sfx("ui");
+    requestNotify(); // pede permissão de notificação (no-op em HTTP/sem secure context)
     $("#focusTask").textContent = task.name;
     $("#distractCount").textContent = "0";
     $("#shieldCount").textContent = "0";
@@ -199,6 +237,7 @@
     // a vida do boss = tempo restante (some quando você termina o sprint)
     const hp = $("#bossHpFill");
     if (hp) hp.style.width = Math.max(0, pct * 100) + "%";
+    if (!f.paused) setFocusTitle(f.left); // tempo visível no título da aba
   }
 
   function tickFocus() {
@@ -257,6 +296,8 @@
       if (FA.FX) { FA.FX.sfx("victory"); FA.FX.confetti(); FA.FX.flash("rgba(46,194,126,0.16)", 420); }
       showReward(r.reward, r.reward.leveledUp, r.unlocked);
       if (r.bonus) setTimeout(() => toast("good", "🛡️ Sprint intocável! +" + r.bonus.amount + " XP"), 600);
+      if (document.hidden) alertBackground("✅ Sprint concluído!", f.task ? f.task.name : "");
+      else stopTitleFlash();
       startBreak();
     } else {
       // Encerrou antes — sem punição. Conta o foco parcial.
@@ -313,6 +354,7 @@
       app.breakEndAt = null;
       $("#breakLeft").textContent = "acabou";
       toast("good", "⏰ Pausa encerrada. Bora pro próximo alvo!");
+      if (document.hidden) alertBackground("⏰ Pausa acabou!", "Bora pro próximo sprint");
     } else {
       $("#breakLeft").textContent = fmtClock(app.breakLeft);
     }
@@ -380,6 +422,7 @@
     app.breakEndAt = null;
     if (app.arena) app.arena.stop();
     if (FA.FX) FA.FX.ambientStop();
+    stopTitleFlash();
     showView("missions");
   }
 
@@ -594,6 +637,7 @@
     // ao voltar pra aba, recalcula os relógios na hora (corrige drift de timer em background)
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
+      stopTitleFlash(); // limpa o "piscar" de aviso ao voltar pra aba
       if (app.inFocus && app.focus && !app.focus.paused) tickFocus();
       if (app.breakEndAt != null) tickBreak();
     });
