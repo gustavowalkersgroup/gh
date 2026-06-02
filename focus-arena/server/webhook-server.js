@@ -28,6 +28,8 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = process.env.PORT || 4173;
+// Em produção (atrás de um nginx), use HOST=127.0.0.1 pra não expor a porta direto.
+const HOST = process.env.HOST || "0.0.0.0";
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN || "";
 const WA_SECRET = process.env.WHATSAPP_SHARED_SECRET || "";
 const ROOT = path.resolve(__dirname, "..");
@@ -148,8 +150,8 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(405); res.end("Method not allowed");
 });
 
-server.listen(PORT, () => {
-  console.log("\n🎯 FOCUS ARENA rodando em  http://localhost:" + PORT);
+server.listen(PORT, HOST, () => {
+  console.log("\n🎯 FOCUS ARENA rodando em  http://" + HOST + ":" + PORT);
   console.log("   ClickUp proxy:  " + (CLICKUP_TOKEN ? "ativo ✅" : "desativado (defina CLICKUP_TOKEN)"));
   console.log("   Webhook WhatsApp (POST):  http://localhost:" + PORT + "/api/whatsapp");
   console.log("   Secret do webhook: " + (WA_SECRET ? "exigido 🔒" : "não exigido"));
