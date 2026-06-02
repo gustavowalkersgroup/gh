@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FOCUS ARENA · foco com TDAH + ClickUp</title>
+  <meta name="description" content="Jogo de foco para TDAH com integração ClickUp e WhatsApp AI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- HUD topo -->
+  <header class="hud">
+    <div class="hud-left">
+      <div class="logo">🎯 FOCUS<span>ARENA</span></div>
+      <div class="conn-pill" id="connPill" title="Status da conexão">⏳ verificando…</div>
+    </div>
+
+    <div class="hud-center">
+      <div class="level-badge" id="levelBadge">1</div>
+      <div class="xp-wrap">
+        <div class="xp-meta"><span id="levelLabel">Nível 1</span><span id="xpLabel">0 / 100 XP</span></div>
+        <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+      </div>
+    </div>
+
+    <div class="hud-right">
+      <div class="stat" title="Sequência de dias com foco"><span id="streakVal">0</span>🔥</div>
+      <div class="stat" title="Minutos focados no total"><span id="focusMinVal">0</span>min</div>
+      <button class="icon-btn" id="btnBreak" title="Pausa rápida — desfocar na arena de mira (P)">☕</button>
+      <button class="icon-btn" id="btnBrain" title="Brain dump (B)">🧠</button>
+      <button class="icon-btn" id="btnWa" title="Mensagens">💬<span class="badge" id="waBadge" hidden>0</span></button>
+      <button class="icon-btn" id="btnConfig" title="Configurações">⚙️</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- VIEW: Missões -->
+    <section class="view" id="view-missions">
+      <div class="missions-main">
+        <div class="missions-head">
+          <h1>Escolha seu alvo</h1>
+          <p class="sub" id="missionsSub">Cada tarefa concluída é um inimigo derrubado. Foque em uma de cada vez.</p>
+          <div class="filters">
+            <input type="search" id="taskSearch" placeholder="🔎 Buscar tarefa…" />
+            <select id="statusFilter">
+              <option value="all">Todos status</option>
+              <option value="a fazer">A fazer</option>
+              <option value="fazendo">Fazendo</option>
+              <option value="bloqueio">Bloqueio</option>
+            </select>
+            <select id="priorityFilter">
+              <option value="all">Toda prioridade</option>
+              <option value="urgent">Urgente</option>
+              <option value="high">Alta</option>
+              <option value="normal">Normal</option>
+              <option value="low">Baixa</option>
+            </select>
+            <button class="ghost-btn" id="btnReload" title="Recarregar do ClickUp">↻</button>
+          </div>
+        </div>
+        <div class="task-grid" id="taskGrid"></div>
+      </div>
+
+      <aside class="missions-side">
+        <div class="panel">
+          <h3>🎯 Missões de hoje</h3>
+          <div id="questList" class="quest-list"></div>
+        </div>
+        <div class="panel">
+          <h3>🏅 Conquistas</h3>
+          <div id="achievementGrid" class="ach-grid"></div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- VIEW: Foco -->
+    <section class="view" id="view-focus" hidden>
+      <div class="focus-stage">
+        <div class="boss" id="bossBox">
+          <div class="boss-emoji" id="bossEmoji">👾</div>
+          <div class="boss-info">
+            <div class="boss-name" id="bossName">Boss</div>
+            <div class="boss-hp" title="A vida do boss cai conforme você foca"><div class="boss-hp-fill" id="bossHpFill"></div></div>
+          </div>
+        </div>
+        <div class="focus-task" id="focusTask">—</div>
+        <div class="ring-wrap">
+          <svg viewBox="0 0 300 300" class="ring">
+            <circle class="ring-bg" cx="150" cy="150" r="130" />
+            <circle class="ring-fg" id="ringFg" cx="150" cy="150" r="130" />
+          </svg>
+          <div class="ring-center">
+            <div class="ring-time" id="ringTime">25:00</div>
+            <div class="ring-state" id="ringState">FOCO</div>
+          </div>
+        </div>
+        <div class="focus-meta">
+          <span title="Distrações registradas">🌀 <b id="distractCount">0</b> distrações</span>
+          <span title="Mensagens seguradas durante o foco">🛡️ <b id="shieldCount">0</b> escudadas</span>
+        </div>
+        <div class="nudge" id="nudge" hidden></div>
+        <div class="focus-actions">
+          <button class="btn" id="btnPause">⏸ Pausar</button>
+          <button class="btn warn" id="btnDistract">🌀 Me distraí…</button>
+          <button class="btn" id="btnAmbient" title="Ruído marrom pra concentrar (toggle)">🎧 Som ambiente</button>
+          <button class="btn danger" id="btnGiveUp">Encerrar</button>
+        </div>
+        <p class="focus-hint">Atalho: <b>espaço</b> pausa · <b>B</b> brain dump · <b>A</b> som ambiente. Cada minuto tira a vida do boss. 💥</p>
+      </div>
+    </section>
+
+    <!-- VIEW: Arena (pausa) -->
+    <section class="view" id="view-arena" hidden>
+      <div class="arena-head">
+        <div class="arena-stats">
+          <div><label>Pontos</label><b id="aScore">0</b></div>
+          <div><label>Combo</label><b id="aCombo">0</b></div>
+          <div><label>Precisão</label><b id="aAcc">0%</b></div>
+          <div><label>Tempo</label><b id="aTime">30</b></div>
+        </div>
+        <div class="arena-break">Pausa: <b id="breakLeft">5:00</b> · descanse os olhos ou treine a mira</div>
+      </div>
+      <div class="arena-canvas-wrap">
+        <canvas id="arenaCanvas"></canvas>
+        <div class="arena-overlay" id="arenaOverlay">
+          <h2>🎯 Arena de Mira</h2>
+          <p>Estoure os alvos. Combo multiplica os pontos. Erro zera o combo.</p>
+          <button class="btn primary big" id="btnArenaStart">Começar rodada (30s)</button>
+        </div>
+      </div>
+      <div class="arena-actions">
+        <button class="btn" id="btnArenaAgain" hidden>↻ De novo</button>
+        <button class="btn primary" id="btnNextSprint">▶ Próximo sprint</button>
+        <button class="btn ghost" id="btnBackMissions">Voltar às missões</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dock WhatsApp -->
+  <div class="dock" id="waDock" hidden>
+    <div class="dock-head">
+      <h3>💬 WhatsApp AI</h3>
+      <div>
+        <button class="ghost-btn" id="btnWaSim" title="Simular mensagem">＋ simular</button>
+        <button class="ghost-btn" id="btnWaClose">✕</button>
+      </div>
+    </div>
+    <div class="dock-sub" id="waStatus">Aguardando sua IA de leitura…</div>
+    <div class="dock-list" id="waList"></div>
+  </div>
+
+  <!-- Modal: Brain dump -->
+  <div class="modal-back" id="brainModal" hidden>
+    <div class="modal">
+      <div class="modal-head"><h2>🧠 Brain dump</h2><button class="ghost-btn" data-close>✕</button></div>
+      <p class="muted">Tirou o foco? Escreve aqui e segue o jogo. A ideia não some — fica parqueada.</p>
+      <div class="row">
+        <input type="text" id="brainInput" placeholder="Ex.: responder cliente HIVEN, comprar café…" />
+        <button class="btn primary" id="btnBrainAdd">Parquear</button>
+      </div>
+      <div id="brainList" class="brain-list"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Configurações -->
+  <div class="modal-back" id="configModal" hidden>
+    <div class="modal">
+      <div class="modal-head"><h2>⚙️ Configurações</h2><button class="ghost-btn" data-close>✕</button></div>
+
+      <h4>Ritmo de foco</h4>
+      <div class="preset-row" id="presetRow"></div>
+
+      <h4>Preferências</h4>
+      <label class="check"><input type="checkbox" id="cfgSound" /> Som da arena</label>
+      <label class="check"><input type="checkbox" id="cfgMinimal" /> Modo minimalista (menos estímulo visual)</label>
+
+      <h4>ClickUp</h4>
+      <p class="muted small">O token fica salvo só no seu navegador. Ideal: rodar o <code>webhook-server.js</code> e deixar o token no servidor (mais seguro e sem CORS).</p>
+      <label class="field"><span>Token pessoal (pk_…)</span><input type="password" id="cfgToken" placeholder="opcional" /></label>
+      <label class="field"><span>List ID</span><input type="text" id="cfgList" /></label>
+      <label class="field"><span>Servidor (webhook/proxy)</span><input type="text" id="cfgServer" placeholder="ex.: http://localhost:4173 (vazio = mesma origem)" /></label>
+      <label class="check"><input type="checkbox" id="cfgWrite" /> Permitir escrever no ClickUp (concluir / criar tarefas)</label>
+      <div class="row">
+        <button class="btn" id="btnTestConn">Testar conexão</button>
+        <span id="connResult" class="muted small"></span>
+      </div>
+
+      <h4>WhatsApp AI (webhook)</h4>
+      <p class="muted small">Configure sua IA pra fazer <b>POST</b> em <code id="waHookUrl">&lt;servidor&gt;/api/whatsapp</code> com JSON <code>{ from, text, urgency }</code>. O jogo busca as mensagens automaticamente.</p>
+
+      <div class="modal-foot">
+        <button class="btn danger ghost" id="btnReset">Zerar progresso</button>
+        <button class="btn primary" data-close>Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reward overlay -->
+  <div class="reward-overlay" id="rewardOverlay" hidden>
+    <div class="reward-card" id="rewardCard"></div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="toast-stack" id="toasts"></div>
+
+  <!-- Camada de efeitos (confete, popups, partículas) -->
+  <canvas id="fxCanvas" aria-hidden="true"></canvas>
+
+  <script src="js/config.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/seed-tasks.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/integrations.js"></script>
+  <script src="js/arena.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
