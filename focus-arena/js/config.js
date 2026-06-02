@@ -117,12 +117,19 @@ FA.config = {
         sizeMax: 40, sizeMin: 14, lifeMax: 1000, lifeMin: 480, spawnMax: 520, spawnMin: 190,
         maxTargets: 11, goldChance: 0.06, bombChance: 0.18, miniChance: 0.14,
       },
+      cs: {
+        label: "CS · Tiro", emoji: "🔫", dur: 35, hint: "Alvos sobem: cabeça vale +, refém você NÃO atira",
+        sizeMax: 30, sizeMin: 20, lifeMax: 1700, lifeMin: 1000, spawnMax: 1000, spawnMin: 520,
+        maxTargets: 3, cs: true, civChance: 0.22,
+      },
     },
     types: {
       normal: { color: "#ff8a3d", inner: "#ff3b5c", scoreMul: 1 },
       mini: { color: "#6c5ce7", inner: "#a29bfe", scoreMul: 3, sizeMul: 0.5 },
       gold: { color: "#ffd24a", inner: "#ff9f1a", scoreMul: 1, flat: 70, sizeMul: 1.12 },
       bomb: { color: "#2a2f3a", inner: "#ff3b5c", penalty: 35 },
+      enemy: { color: "#ff5a3c", head: "#ffd24a", scoreMul: 1, headMul: 2.4 },
+      civ: { color: "#39d0ff", penalty: 45 },
     },
   },
 };

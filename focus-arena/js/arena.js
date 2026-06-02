@@ -14,6 +14,16 @@ window.FA = window.FA || {};
   function now() { return performance.now(); }
   const TAU = Math.PI * 2;
   const rnd = (a, b) => a + Math.random() * (b - a);
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
 
   // Compat: FA.beep continua existindo (usado em app.js), roteando pro FX.
   function beep(freq, dur, type) {
@@ -58,7 +68,7 @@ window.FA = window.FA || {};
       this.startTs = now();
       this.lastSpawn = 0;
       this.score = 0; this.combo = 0; this.bestCombo = 0;
-      this.hits = 0; this.shots = 0; this.goldHits = 0; this.bombHits = 0;
+      this.hits = 0; this.shots = 0; this.goldHits = 0; this.bombHits = 0; this.headshots = 0;
       this.targets = [];
       this.lastBomb = 0;
       this.bgShapes = this._makeBgShapes();
@@ -93,21 +103,52 @@ window.FA = window.FA || {};
     _spawn(opts) {
       opts = opts || {};
       const m = this.mode, d = this._difficulty();
-      let type = opts.forceType || this._pickType();
-      if (opts.noBomb && type === "bomb") type = "normal";
+      let type;
+      if (m.cs) {                                   // modo CS: inimigos e reféns
+        type = Math.random() < (m.civChance || 0.2) ? "civ" : "enemy";
+      } else {
+        type = opts.forceType || this._pickType();
+        if (opts.noBomb && type === "bomb") type = "normal";
+      }
       const tcfg = this.TYPES[type] || this.TYPES.normal;
       const baseMax = m.sizeMax - d * (m.sizeMax - m.sizeMin) * 0.7;
       let r = m.sizeMin + Math.random() * Math.max(3, baseMax - m.sizeMin);
       if (tcfg.sizeMul) r *= tcfg.sizeMul;
       const pad = r + 10;
+      let x = pad + Math.random() * (this.w - pad * 2);
+      let y = pad + Math.random() * (this.h - pad * 2);
+      if (m.cs) {                                   // deixa espaço pra cabeça (acima) e base (abaixo)
+        const top = r * 2.4, bot = r * 1.4;
+        y = top + Math.random() * Math.max(10, this.h - top - bot);
+      }
       let life = m.lifeMax - d * (m.lifeMax - m.lifeMin);
       // No modo "aparece ao acertar": alvos bons persistem até o clique; bombas somem sozinhas.
       if (m.spawnOnHit) life = type === "bomb" ? 1500 : Infinity;
-      this.targets.push({
-        x: pad + Math.random() * (this.w - pad * 2),
-        y: pad + Math.random() * (this.h - pad * 2),
-        r, born: now(), life, hit: false, type,
-      });
+      this.targets.push({ x, y, r, born: now(), life, hit: false, type });
+    }
+
+    // Dimensões da silhueta humana (CS): corpo (cápsula) + cabeça.
+    _humanDims(t) {
+      const bodyW = t.r * 1.3, bodyH = t.r * 2.0;
+      const bodyTop = t.y - bodyH / 2, bodyBottom = t.y + bodyH / 2;
+      const headR = t.r * 0.55, headCx = t.x, headCy = bodyTop - headR * 0.7;
+      return { bodyW, bodyH, bodyTop, bodyBottom, headR, headCx, headCy };
+    }
+
+    // Em que zona do alvo o clique caiu? "head"/"body" (inimigo), "civ", "hit" (alvos redondos) ou null.
+    _hitZone(t, x, y) {
+      if (t.type === "enemy" || t.type === "civ") {
+        const d = this._humanDims(t);
+        const dxh = x - d.headCx, dyh = y - d.headCy;
+        const inHead = dxh * dxh + dyh * dyh <= d.headR * d.headR;
+        const inBody = Math.abs(x - t.x) <= d.bodyW / 2 && y >= d.bodyTop && y <= d.bodyBottom;
+        if (t.type === "civ") return (inHead || inBody) ? "civ" : null;
+        if (inHead) return "head";
+        if (inBody) return "body";
+        return null;
+      }
+      const dx = x - t.x, dy = y - t.y;
+      return (dx * dx + dy * dy <= t.r * t.r) ? "hit" : null;
     }
 
     _handleMove(ev) {
@@ -120,11 +161,10 @@ window.FA = window.FA || {};
       const rect = this.canvas.getBoundingClientRect();
       const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
       this.shots++;
-      let hitIdx = -1;
+      let hitIdx = -1, zone = null;
       for (let i = this.targets.length - 1; i >= 0; i--) {
-        const t = this.targets[i];
-        const dx = x - t.x, dy = y - t.y;
-        if (dx * dx + dy * dy <= t.r * t.r) { hitIdx = i; break; }
+        const z = this._hitZone(this.targets[i], x, y);
+        if (z) { hitIdx = i; zone = z; break; }
       }
       if (hitIdx < 0) {            // errou o tiro
         this.combo = 0;
@@ -137,33 +177,42 @@ window.FA = window.FA || {};
       this.targets.splice(hitIdx, 1);
       const tcfg = this.TYPES[t.type] || this.TYPES.normal;
 
-      if (t.type === "bomb") {     // clicou na bomba — penalidade
+      // Alvos que você NÃO deve clicar: bomba 💀 e refém 🙌
+      if (t.type === "bomb" || t.type === "civ") {
         this.combo = 0;
-        this.score = Math.max(0, this.score - (tcfg.penalty || 30));
-        this.bombHits++;
+        this.score = Math.max(0, this.score - (tcfg.penalty || 35));
+        if (t.type === "bomb") this.bombHits++;
         sfx("bomb");
         if (FA.FX) {
           FA.FX.shake(11, 360); FA.FX.flash("rgba(255,59,92,0.28)", 320);
           FA.FX.burst(ev.clientX, ev.clientY, "#ff3b5c", 22);
-          FA.FX.popText(ev.clientX, ev.clientY, "-" + (tcfg.penalty || 30), "#ff3b5c", { size: 26 });
+          FA.FX.popText(ev.clientX, ev.clientY, t.type === "civ" ? "REFÉM! ❌" : "-" + (tcfg.penalty || 35), "#ff3b5c", { size: 24 });
         }
         return;
       }
 
       // acerto bom
       this.hits++; this.combo++; this.bestCombo = Math.max(this.bestCombo, this.combo);
-      const baseRaw = Math.max(5, Math.round(40 - t.r));
-      let pts = (tcfg.flat || baseRaw) * (tcfg.scoreMul || 1) * (1 + this.combo * 0.1);
-      pts = Math.round(pts);
+      let pts, color, isHead = false;
+      if (t.type === "enemy") {
+        const base = Math.max(8, Math.round(34 - t.r * 0.4));
+        if (zone === "head") { isHead = true; this.headshots++; pts = Math.round((base * (tcfg.headMul || 2.4) + 25) * (1 + this.combo * 0.1)); }
+        else pts = Math.round(base * (1 + this.combo * 0.1));
+        color = isHead ? "#ffd24a" : "#ff5a3c";
+      } else {
+        const baseRaw = Math.max(5, Math.round(40 - t.r));
+        pts = Math.round((tcfg.flat || baseRaw) * (tcfg.scoreMul || 1) * (1 + this.combo * 0.1));
+        color = t.type === "gold" ? "#ffd24a" : t.type === "mini" ? "#a29bfe" : "#2ec27e";
+      }
       this.score += pts;
 
-      const color = t.type === "gold" ? "#ffd24a" : t.type === "mini" ? "#a29bfe" : "#2ec27e";
       if (FA.FX) {
-        FA.FX.burst(ev.clientX, ev.clientY, color, t.type === "gold" ? 22 : 12);
-        FA.FX.popText(ev.clientX, ev.clientY, "+" + pts, color, { size: t.type === "gold" ? 28 : 22 });
+        FA.FX.burst(ev.clientX, ev.clientY, color, (isHead || t.type === "gold") ? 22 : 12);
+        FA.FX.popText(ev.clientX, ev.clientY, "+" + pts, color, { size: (isHead || t.type === "gold") ? 28 : 22 });
       }
 
-      if (t.type === "gold") { this.goldHits++; sfx("gold"); if (FA.FX) FA.FX.flash("rgba(255,210,74,0.18)", 260); }
+      if (isHead) { sfx("headshot"); if (FA.FX) FA.FX.popText(ev.clientX, ev.clientY - 28, "HEADSHOT! 🎯", "#ffd24a", { size: 18, ttl: 0.8 }); }
+      else if (t.type === "gold") { this.goldHits++; sfx("gold"); if (FA.FX) FA.FX.flash("rgba(255,210,74,0.18)", 260); }
       else if (t.type === "mini") { sfx("crit"); if (FA.FX) FA.FX.popText(ev.clientX, ev.clientY - 26, "CRÍTICO!", "#a29bfe", { size: 16, ttl: 0.7 }); }
       else { sfx("hit", this.combo); }
 
@@ -197,7 +246,11 @@ window.FA = window.FA || {};
       }
 
       this.targets = this.targets.filter((tg) => {
-        if (t - tg.born > tg.life) { if (tg.type !== "bomb") this.combo = 0; return false; }
+        if (t - tg.born > tg.life) {
+          // perder um alvo "bom" quebra o combo; bomba e refém saindo são OK
+          if (tg.type !== "bomb" && tg.type !== "civ") this.combo = 0;
+          return false;
+        }
         return true;
       });
 
@@ -217,7 +270,7 @@ window.FA = window.FA || {};
           score: this.score, bestCombo: this.bestCombo,
           accuracy: this.shots ? this.hits / this.shots : 0,
           hits: this.hits, shots: this.shots, goldHits: this.goldHits, bombHits: this.bombHits,
-          mode: this.mode.label,
+          headshots: this.headshots, mode: this.mode.label,
         });
         return;
       }
@@ -325,6 +378,30 @@ window.FA = window.FA || {};
           ctx.beginPath(); ctx.arc(tg.x, tg.y, r * 0.6, 0, Math.PI * 2); ctx.fillStyle = "#ff9f1a"; ctx.fill();
           ctx.font = `${Math.round(r * 0.9)}px serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText("★", tg.x, tg.y + 1);
+        } else if (tg.type === "enemy" || tg.type === "civ") {
+          const dm = this._humanDims(tg);
+          const isCiv = tg.type === "civ";
+          const curH = dm.bodyH * grow;
+          const top = dm.bodyBottom - curH;            // sobe da base (efeito pop-up)
+          ctx.shadowColor = isCiv ? "#39d0ff" : "#ff5a3c"; ctx.shadowBlur = 12;
+          ctx.fillStyle = isCiv ? "#39d0ff" : "#ff5a3c";
+          roundRect(ctx, tg.x - dm.bodyW / 2, top, dm.bodyW, curH, Math.min(dm.bodyW / 2, 10));
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          if (grow > 0.55) {                            // cabeça surge quando quase de pé
+            const headCy = top - dm.headR * 0.7;
+            ctx.globalAlpha = Math.max(0, fade) * Math.min(1, (grow - 0.55) / 0.45);
+            ctx.beginPath(); ctx.arc(tg.x, headCy, dm.headR, 0, Math.PI * 2);
+            ctx.fillStyle = isCiv ? "#9be7ff" : "#ffb3a3"; ctx.fill();
+            ctx.globalAlpha = Math.max(0, fade);
+          }
+          if (isCiv) {
+            ctx.font = `${Math.round(tg.r * 0.9)}px serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("🙌", tg.x, top + curH * 0.42);
+          } else {
+            ctx.strokeStyle = "#fff"; ctx.globalAlpha = Math.max(0, fade) * 0.55; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(tg.x, tg.y, tg.r * 0.42, 0, Math.PI * 2); ctx.stroke();
+          }
         } else {
           const tcfg = this.TYPES[tg.type] || this.TYPES.normal;
           ctx.beginPath(); ctx.arc(tg.x, tg.y, r, 0, Math.PI * 2); ctx.fillStyle = tcfg.color; ctx.fill();

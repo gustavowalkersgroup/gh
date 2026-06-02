@@ -175,6 +175,7 @@ window.FA = window.FA || {};
         case "hit": this.tone(420 + Math.min(arg || 0, 24) * 22, 0.06, "triangle"); break;
         case "miss": this.tone(140, 0.05, "sawtooth", 0, 0.12); break;
         case "crit": this.tone(700, 0.05, "square"); this.tone(1040, 0.1, "square", 0.05); break;
+        case "headshot": this.tone(1300, 0.04, "square"); this.tone(720, 0.14, "sawtooth", 0.03, 0.22); break;
         case "gold": [660, 880, 1320].forEach((f, i) => this.tone(f, 0.12, "triangle", i * 0.06)); break;
         case "bomb": this.tone(90, 0.28, "sawtooth", 0, 0.3); this.tone(60, 0.32, "square", 0.02, 0.25); break;
         case "levelup": [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.16, "triangle", i * 0.09, 0.2)); break;

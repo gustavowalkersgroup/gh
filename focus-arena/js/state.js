@@ -57,6 +57,7 @@ window.FA = window.FA || {};
     { id: "gold_hunter", icon: "🥇", name: "Caçador de Ouro", desc: "Estoure um alvo dourado na arena" },
     { id: "demolisher", icon: "🧨", name: "Demolidor", desc: "Combo de 30 na arena" },
     { id: "flawless", icon: "💯", name: "Impecável", desc: "100% de precisão numa rodada (com pontos)" },
+    { id: "headhunter", icon: "🔫", name: "Headhunter", desc: "Acerte um headshot no modo CS" },
   ];
 
   const QUEST_POOL = [
@@ -277,7 +278,7 @@ window.FA = window.FA || {};
       return { reward, unlocked };
     },
 
-    recordArena({ score, accuracy, bestCombo, goldHits }) {
+    recordArena({ score, accuracy, bestCombo, goldHits, headshots }) {
       const p = this.data.player;
       p.bestCombo = Math.max(p.bestCombo, bestCombo || 0);
       p.bestAccuracy = Math.max(p.bestAccuracy, accuracy || 0);
@@ -289,6 +290,7 @@ window.FA = window.FA || {};
       if ((bestCombo || 0) >= 20) { const c = this.unlock("combo20"); if (c) unlocked.push(c); }
       if ((bestCombo || 0) >= 30) { const d = this.unlock("demolisher"); if (d) unlocked.push(d); }
       if ((goldHits || 0) >= 1) { const g = this.unlock("gold_hunter"); if (g) unlocked.push(g); }
+      if ((headshots || 0) >= 1) { const hh = this.unlock("headhunter"); if (hh) unlocked.push(hh); }
       this.progressQuest("arena", 1);
       this.save();
       return { reward, unlocked };

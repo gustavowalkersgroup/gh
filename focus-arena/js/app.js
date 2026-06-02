@@ -332,12 +332,12 @@
         $("#aTime").textContent = s.remaining;
       },
       (end) => {
-        const r = State.recordArena({ score: end.score, accuracy: end.accuracy, bestCombo: end.bestCombo, goldHits: end.goldHits });
+        const r = State.recordArena({ score: end.score, accuracy: end.accuracy, bestCombo: end.bestCombo, goldHits: end.goldHits, headshots: end.headshots });
         const ov = $("#arenaOverlay");
         ov.hidden = false;
         ov.innerHTML =
           `<h2>Rodada concluída · ${end.mode}</h2>
-           <p>${end.score} pts · combo ${end.bestCombo} · ${Math.round(end.accuracy * 100)}% precisão${end.goldHits ? " · 🥇 " + end.goldHits : ""}</p>
+           <p>${end.score} pts · combo ${end.bestCombo} · ${Math.round(end.accuracy * 100)}% precisão${end.goldHits ? " · 🥇 " + end.goldHits : ""}${end.headshots ? " · 🎯 " + end.headshots + " HS" : ""}</p>
            <p class="muted">+${r.reward.amount} XP${r.reward.crit > 1 ? " (CRÍTICO x" + r.reward.crit + ")" : ""}</p>
            <button class="btn primary big" id="btnArenaStart2">↻ Jogar de novo</button>` +
           modeButtonsHtml();
