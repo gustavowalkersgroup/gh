@@ -40,8 +40,10 @@
   // ---------- HUD ----------
   function renderHud() {
     const li = State.levelInfo();
+    const rank = State.rankForLevel(li.level);
     $("#levelBadge").textContent = li.level;
-    $("#levelLabel").textContent = "Nível " + li.level;
+    $("#levelBadge").title = rank.icon + " " + rank.title;
+    $("#levelLabel").textContent = "Nível " + li.level + " · " + rank.icon + " " + rank.title;
     $("#xpLabel").textContent = li.into + " / " + li.span + " XP";
     $("#xpFill").style.width = Math.round(li.pct * 100) + "%";
     $("#streakVal").textContent = State.data.player.streakDays;
@@ -100,6 +102,7 @@
           <div class="threat" style="color:${pri.color}">⚔ ${pri.threat}</div>
           <div class="name">${escapeHtml(t.name)}</div>
           <div class="meta">
+            ${t.company ? `<span class="chip company" title="Empresa / cliente">🏢 ${escapeHtml(t.company)}</span>` : ""}
             <span class="chip status" style="color:${st.color}">● ${st.label}</span>
             ${dl ? `<span class="chip ${dl.cls}">${dl.txt}</span>` : ""}
             ${assignees ? `<span class="chip">👤 ${escapeHtml(assignees)}</span>` : ""}
@@ -122,11 +125,13 @@
   async function completeTask(task) {
     if (!task) return;
     const r = State.completeTask(task);
-    showReward(r.reward, null, r.unlocked);
+    if (FA.FX) { FA.FX.sfx("victory"); FA.FX.confetti(null, null, 70); }
+    showReward(r.reward, r.reward.leveledUp, r.unlocked);
     toast("good", "✓ Tarefa derrubada! +" + r.reward.amount + " XP");
     const res = await FA.ClickUp.completeTask(task);
-    if (res.ok && !res.local) toast("good", "Sincronizado com o ClickUp");
+    if (res.ok && !res.local) toast("good", "Sincronizado com o ClickUp ✓");
     else if (res.local && State.data.settings.writeBack) toast("xp", "Marcada localmente");
+    else if (!res.ok && !res.local) toast("ach", "⚠️ Não consegui concluir no ClickUp — confira a conexão.");
     // some da lista local
     app.tasks = app.tasks.filter((t) => t.id !== task.id);
     renderTasks();
@@ -167,6 +172,11 @@
       task, total: mins * 60, left: mins * 60, paused: false,
       distractions: 0, shielded: 0, lastNudge: 0, interval: null,
     };
+    const boss = (cfg.bossByPriority && cfg.bossByPriority[task.priority]) || cfg.bossByPriority.none;
+    $("#bossEmoji").textContent = boss.emoji;
+    $("#bossName").textContent = "BOSS · " + boss.name;
+    $("#bossHpFill").style.width = "100%";
+    if (FA.FX) FA.FX.sfx("ui");
     $("#focusTask").textContent = task.name;
     $("#distractCount").textContent = "0";
     $("#shieldCount").textContent = "0";
@@ -185,6 +195,9 @@
     $("#ringTime").textContent = fmtClock(f.left);
     const pct = f.left / f.total;
     $("#ringFg").style.strokeDashoffset = RING_CIRC * (1 - pct);
+    // a vida do boss = tempo restante (some quando você termina o sprint)
+    const hp = $("#bossHpFill");
+    if (hp) hp.style.width = Math.max(0, pct * 100) + "%";
   }
 
   function tickFocus() {
@@ -211,9 +224,17 @@
   function togglePause() {
     const f = app.focus; if (!f) return;
     f.paused = !f.paused;
+    if (FA.FX) FA.FX.sfx("ui");
     $("#btnPause").textContent = f.paused ? "▶ Retomar" : "⏸ Pausar";
     $("#ringState").textContent = f.paused ? "PAUSADO" : "FOCO";
     $("#ringState").className = "ring-state" + (f.paused ? " paused" : "");
+  }
+
+  function toggleAmbient() {
+    if (!FA.FX) return;
+    const on = FA.FX.ambientToggle();
+    const b = $("#btnAmbient");
+    if (b) { b.classList.toggle("active", !!on); b.textContent = on ? "🎧 Som ambiente ✓" : "🎧 Som ambiente"; }
   }
 
   function finishFocus(completed) {
@@ -222,9 +243,12 @@
     app.inFocus = false;
     const elapsedMin = Math.round((f.total - f.left) / 60);
 
+    if (FA.FX) FA.FX.ambientStop();
     if (completed) {
       const r = State.completeSprint({ minutes: State.data.settings.sprintMin, distractions: f.distractions });
-      FA.beep(660, 0.18, "sine");
+      // BOSS DERROTADO 🎉
+      $("#bossHpFill").style.width = "0%";
+      if (FA.FX) { FA.FX.sfx("victory"); FA.FX.confetti(); FA.FX.flash("rgba(46,194,126,0.16)", 420); }
       showReward(r.reward, r.reward.leveledUp, r.unlocked);
       if (r.bonus) setTimeout(() => toast("good", "🛡️ Sprint intocável! +" + r.bonus.amount + " XP"), 600);
       startBreak();
@@ -248,17 +272,30 @@
     if (!app.focus) return;
     app.focus.distractions++;
     $("#distractCount").textContent = app.focus.distractions;
+    // o boss "ri" e contra-ataca — puramente cosmético (sem punição de XP)
+    if (FA.FX) { FA.FX.shake(7, 280); FA.FX.flash("rgba(255,138,61,0.14)", 240); }
+    const b = $("#bossEmoji");
+    if (b) { b.classList.remove("boss-hit"); void b.offsetWidth; b.classList.add("boss-hit"); }
     openBrain(); // parqueia o pensamento em vez de seguir ele
   }
 
   // ---------- Pausa / Arena ----------
+  function modeButtonsHtml() {
+    const modes = FA.config.arena.modes;
+    return `<div class="mode-row">` + Object.keys(modes).map((k) =>
+      `<button class="mode-btn${app.arenaMode === k ? " active" : ""}" data-mode="${k}"><b>${modes[k].emoji} ${modes[k].label}</b><small>${modes[k].hint}</small></button>`
+    ).join("") + `</div>`;
+  }
+  function wireModeButtons(ov) {
+    $$("[data-mode]", ov).forEach((b) => b.addEventListener("click", () => startArenaRound(b.dataset.mode)));
+  }
   function resetArenaOverlay() {
     const ov = $("#arenaOverlay");
     ov.innerHTML =
       `<h2>🎯 Arena de Mira</h2>
-       <p>Estoure os alvos. Combo multiplica os pontos. Erro zera o combo.</p>
-       <button class="btn primary big" id="btnArenaStart">Começar rodada (30s)</button>`;
-    $("#btnArenaStart").addEventListener("click", startArenaRound);
+       <p>🥇 ouro vale muito · 💀 bomba você <b>não</b> clica · combo multiplica. Escolha o modo:</p>` +
+      modeButtonsHtml();
+    wireModeButtons(ov);
   }
 
   function startBreak() {
@@ -281,11 +318,13 @@
     }, 1000);
   }
 
-  function startArenaRound() {
+  function startArenaRound(modeKey) {
+    if (typeof modeKey !== "string") modeKey = null; // ignora o Event quando vem de addEventListener
+    app.arenaMode = modeKey || app.arenaMode || FA.config.arena.defaultMode;
     $("#arenaOverlay").hidden = true;
     if (!app.arena) app.arena = new FA.Arena($("#arenaCanvas"));
     $("#btnArenaAgain").hidden = true;
-    app.arena.start(30,
+    app.arena.start(null,
       (s) => {
         $("#aScore").textContent = s.score;
         $("#aCombo").textContent = s.combo;
@@ -293,18 +332,23 @@
         $("#aTime").textContent = s.remaining;
       },
       (end) => {
-        const r = State.recordArena({ score: end.score, accuracy: end.accuracy, bestCombo: end.bestCombo });
-        $("#arenaOverlay").hidden = false;
-        $("#arenaOverlay").innerHTML =
-          `<h2>Rodada concluída</h2>
-           <p>${end.score} pts · combo ${end.bestCombo} · ${Math.round(end.accuracy * 100)}% precisão</p>
-           <p class="muted">+${r.reward.amount} XP</p>
-           <button class="btn primary big" id="btnArenaStart2">Jogar de novo</button>`;
-        $("#btnArenaStart2").addEventListener("click", startArenaRound);
+        const r = State.recordArena({ score: end.score, accuracy: end.accuracy, bestCombo: end.bestCombo, goldHits: end.goldHits });
+        const ov = $("#arenaOverlay");
+        ov.hidden = false;
+        ov.innerHTML =
+          `<h2>Rodada concluída · ${end.mode}</h2>
+           <p>${end.score} pts · combo ${end.bestCombo} · ${Math.round(end.accuracy * 100)}% precisão${end.goldHits ? " · 🥇 " + end.goldHits : ""}</p>
+           <p class="muted">+${r.reward.amount} XP${r.reward.crit > 1 ? " (CRÍTICO x" + r.reward.crit + ")" : ""}</p>
+           <button class="btn primary big" id="btnArenaStart2">↻ Jogar de novo</button>` +
+          modeButtonsHtml();
+        $("#btnArenaStart2").addEventListener("click", () => startArenaRound(app.arenaMode));
+        wireModeButtons(ov);
         $("#btnArenaAgain").hidden = false;
         showReward(r.reward, r.reward.leveledUp, r.unlocked);
+        if (end.score > 0 && FA.FX) FA.FX.confetti(null, null, 40);
         renderHud(); renderQuests(); renderAchievements();
-      });
+      },
+      app.arenaMode);
   }
 
   function offerCompletePending() {
@@ -320,7 +364,16 @@
   function goMissions() {
     clearInterval(app.breakInterval);
     if (app.arena) app.arena.stop();
+    if (FA.FX) FA.FX.ambientStop();
     showView("missions");
+  }
+
+  // Pausa rápida sob demanda: abre a Arena pra "desfocar" sem precisar
+  // completar um sprint antes. Bloqueada durante um foco ativo.
+  function quickBreak() {
+    if (app.inFocus) { toast("xp", "Termine ou encerre o foco antes de pausar. 🙂"); return; }
+    startBreak();
+    toast("good", "☕ Pausa ativa. Estoure uns alvos e volte renovado.");
   }
 
   // ---------- WhatsApp dock ----------
@@ -425,12 +478,25 @@
   function showReward(reward, leveledUp, unlocked) {
     if (!reward || !reward.amount) { if (unlocked) unlocked.forEach(achToast); return; }
     const ov = $("#rewardOverlay"), card = $("#rewardCard");
-    let html = `<div class="big-xp">+${reward.amount} XP</div>`;
+    const crit = reward.crit && reward.crit > 1;
+    let html = `<div class="big-xp${crit ? " crit" : ""}">+${reward.amount} XP</div>`;
+    if (crit) html += `<div class="crit-tag">${reward.crit >= 3 ? "💥 JACKPOT" : "✦ CRÍTICO"} x${reward.crit}!</div>`;
     if (leveledUp) html += `<div class="lvl">⬆ NÍVEL ${leveledUp}!</div>`;
+    // subiu de patente?
+    let rankUp = null;
+    if (leveledUp && reward.fromLevel != null) {
+      const rOld = State.rankForLevel(reward.fromLevel), rNew = State.rankForLevel(reward.toLevel);
+      if (rNew.title !== rOld.title) { rankUp = rNew; html += `<div class="rankup">${rNew.icon} ${rNew.title}</div>`; }
+    }
     card.innerHTML = html;
     ov.hidden = false;
     clearTimeout(app._rewardT);
-    app._rewardT = setTimeout(() => { ov.hidden = true; }, leveledUp ? 2000 : 1100);
+    app._rewardT = setTimeout(() => { ov.hidden = true; }, leveledUp ? 2400 : (crit ? 1500 : 1100));
+    if (FA.FX) {
+      if (leveledUp) { FA.FX.confetti(); FA.FX.sfx("levelup"); }
+      else if (crit) { FA.FX.confetti(null, null, 50, ["#ffd24a", "#ff9f1a", "#fff3c4"]); FA.FX.sfx("crit"); }
+      if (rankUp) setTimeout(() => { FA.FX.flash("rgba(108,92,231,0.25)", 500); FA.FX.confetti(null, null, 70); }, 250);
+    }
     if (unlocked && unlocked.length) unlocked.forEach((a, i) => setTimeout(() => achToast(a), 400 + i * 500));
   }
   function achToast(a) { toast("ach", "🏅 " + a.name + " desbloqueada!"); FA.beep(880, 0.12, "triangle"); }
@@ -470,6 +536,7 @@
   // ---------- Boot ----------
   function wire() {
     $("#btnConfig").addEventListener("click", openConfig);
+    $("#btnBreak").addEventListener("click", quickBreak);
     $("#btnBrain").addEventListener("click", openBrain);
     $("#btnWa").addEventListener("click", () => toggleDock());
     $("#btnWaClose").addEventListener("click", () => toggleDock(false));
@@ -482,6 +549,7 @@
 
     $("#btnPause").addEventListener("click", togglePause);
     $("#btnDistract").addEventListener("click", registerDistraction);
+    $("#btnAmbient").addEventListener("click", toggleAmbient);
     $("#btnGiveUp").addEventListener("click", () => finishFocus(false));
 
     $("#btnArenaStart").addEventListener("click", startArenaRound);
@@ -516,12 +584,15 @@
       }
       if (e.key === "Escape") $$(".modal-back").forEach((m) => { if (!m.hidden) { m.hidden = true; saveConfigFromForm(); } });
       if (e.key.toLowerCase() === "b") { e.preventDefault(); openBrain(); }
+      if (e.key.toLowerCase() === "p") { e.preventDefault(); quickBreak(); }
+      if (e.key.toLowerCase() === "a") { e.preventDefault(); toggleAmbient(); }
       if (e.code === "Space" && app.inFocus) { e.preventDefault(); togglePause(); }
     });
   }
 
   function boot() {
     State.load();
+    if (FA.FX) FA.FX.init();
     renderHud();
     renderQuests();
     renderAchievements();

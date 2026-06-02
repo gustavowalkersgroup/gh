@@ -34,7 +34,7 @@ window.FA = window.FA || {};
         clickupToken: "",
         listId: FA.config.integrations.clickup.listId,
         serverBase: FA.config.integrations.defaultServerBase,
-        writeBack: false, // escrever de volta no ClickUp (concluir/criar tarefa)
+        writeBack: true, // escrever de volta no ClickUp (concluir/criar tarefa)
       },
       achievements: {}, // id -> timestamp
       brainDump: [], // {id, text, ts, pushed}
@@ -54,6 +54,9 @@ window.FA = window.FA || {};
     { id: "clutch", icon: "🚨", name: "Clutch", desc: "Conclua uma tarefa URGENTE" },
     { id: "dump10", icon: "🧠", name: "Mente Limpa", desc: "Parqueie 10 distrações no brain dump" },
     { id: "centurion", icon: "🏛️", name: "Centurião", desc: "100 sprints concluídos no total" },
+    { id: "gold_hunter", icon: "🥇", name: "Caçador de Ouro", desc: "Estoure um alvo dourado na arena" },
+    { id: "demolisher", icon: "🧨", name: "Demolidor", desc: "Combo de 30 na arena" },
+    { id: "flawless", icon: "💯", name: "Impecável", desc: "100% de precisão numa rodada (com pontos)" },
   ];
 
   const QUEST_POOL = [
@@ -110,16 +113,33 @@ window.FA = window.FA || {};
     // ---- XP / nível ----
     levelInfo() { return levelProgress(this.data.player.xp); },
 
-    awardXp(amount, reason) {
+    awardXp(amount, reason, allowCrit) {
       amount = Math.round(amount);
-      if (amount <= 0) return { amount: 0 };
+      if (amount <= 0) return { amount: 0, crit: 1 };
+      // Recompensa variável (dopamina): chance de XP crítico / jackpot.
+      let crit = 1;
+      if (allowCrit !== false) {
+        const c = FA.config.crit || {};
+        const r = Math.random();
+        if (r < (c.jackpotChance || 0)) crit = c.jackpotMult || 3;
+        else if (r < (c.jackpotChance || 0) + (c.chance || 0)) crit = c.mult || 2;
+      }
+      amount = Math.round(amount * crit);
       const before = levelFromXp(this.data.player.xp);
       this.data.player.xp += amount;
       const after = levelFromXp(this.data.player.xp);
-      this.pushLog(`+${amount} XP · ${reason}`);
+      this.pushLog(`+${amount} XP · ${reason}${crit > 1 ? ` (CRÍTICO x${crit})` : ""}`);
       const leveledUp = after > before ? after : 0;
       this.save();
-      return { amount, leveledUp };
+      return { amount, leveledUp, crit, fromLevel: before, toLevel: after };
+    },
+
+    // Patente (título RPG) para um dado nível.
+    rankForLevel(level) {
+      const ranks = FA.config.ranks || [];
+      let r = ranks[0] || { title: "", icon: "" };
+      for (const x of ranks) { if (level >= x.min) r = x; }
+      return r;
     },
 
     streakMultiplier() {
@@ -257,7 +277,7 @@ window.FA = window.FA || {};
       return { reward, unlocked };
     },
 
-    recordArena({ score, accuracy, bestCombo }) {
+    recordArena({ score, accuracy, bestCombo, goldHits }) {
       const p = this.data.player;
       p.bestCombo = Math.max(p.bestCombo, bestCombo || 0);
       p.bestAccuracy = Math.max(p.bestAccuracy, accuracy || 0);
@@ -265,7 +285,10 @@ window.FA = window.FA || {};
       const reward = this.awardXp(xp, "Arena de mira");
       const unlocked = [];
       if (accuracy >= 0.9 && score > 0) { const s = this.unlock("sniper"); if (s) unlocked.push(s); }
+      if (accuracy >= 1 && score > 0) { const f = this.unlock("flawless"); if (f) unlocked.push(f); }
       if ((bestCombo || 0) >= 20) { const c = this.unlock("combo20"); if (c) unlocked.push(c); }
+      if ((bestCombo || 0) >= 30) { const d = this.unlock("demolisher"); if (d) unlocked.push(d); }
+      if ((goldHits || 0) >= 1) { const g = this.unlock("gold_hunter"); if (g) unlocked.push(g); }
       this.progressQuest("arena", 1);
       this.save();
       return { reward, unlocked };

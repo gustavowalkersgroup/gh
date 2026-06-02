@@ -70,5 +70,58 @@ FA.config = {
     "👀 Olha pra longe 20s (regra 20-20-20).",
     "🫁 Respira fundo 3x. Você tá indo bem.",
     "🦵 Mexe o pé, descruza as pernas.",
+    "🎧 Tá no ritmo. Não desiste agora.",
+    "🔥 Cada minuto aqui é XP. Continua.",
   ],
+
+  // Patentes por nível (sabor RPG). Mostra o título de maior `min` <= nível atual.
+  ranks: [
+    { min: 1, title: "Recruta do Foco", icon: "🪖" },
+    { min: 3, title: "Caçador de Tarefas", icon: "🏹" },
+    { min: 6, title: "Guardião do Foco", icon: "🛡️" },
+    { min: 10, title: "Ninja da Produtividade", icon: "🥷" },
+    { min: 15, title: "Caçador de Bosses", icon: "⚔️" },
+    { min: 22, title: "Mestre do Hiperfoco", icon: "🧠" },
+    { min: 30, title: "Lenda Imbatível", icon: "👑" },
+  ],
+
+  // Recompensa variável (dopamina): toda concessão de XP tem chance de CRÍTICO.
+  crit: { chance: 0.16, mult: 2, jackpotChance: 0.03, jackpotMult: 3 },
+
+  // Boss (a tarefa em foco) por prioridade do ClickUp.
+  bossByPriority: {
+    urgent: { emoji: "👹", name: "Chefão Urgente" },
+    high: { emoji: "🐉", name: "Dragão Prioritário" },
+    normal: { emoji: "👾", name: "Invasor" },
+    low: { emoji: "🪨", name: "Golem Lento" },
+    none: { emoji: "🗿", name: "Estátua Teimosa" },
+  },
+
+  // Arena de mira: modos de jogo + alvos especiais.
+  arena: {
+    defaultMode: "classic",
+    modes: {
+      classic: {
+        label: "Clássico", emoji: "🎯", dur: 30, hint: "Equilíbrio: alvos variados",
+        sizeMax: 34, sizeMin: 16, lifeMax: 1500, lifeMin: 800, spawnMax: 900, spawnMin: 380,
+        maxTargets: 6, goldChance: 0.08, bombChance: 0.12, miniChance: 0.16,
+      },
+      precision: {
+        label: "Precisão", emoji: "🔬", dur: 30, hint: "Poucos, pequenos, valem muito",
+        sizeMax: 24, sizeMin: 11, lifeMax: 2200, lifeMin: 1300, spawnMax: 1150, spawnMin: 720,
+        maxTargets: 3, goldChance: 0.12, bombChance: 0.05, miniChance: 0.4,
+      },
+      frenzy: {
+        label: "Frenesi", emoji: "🔥", dur: 30, hint: "Caos: muitos alvos, vida curta",
+        sizeMax: 40, sizeMin: 14, lifeMax: 1000, lifeMin: 480, spawnMax: 520, spawnMin: 190,
+        maxTargets: 11, goldChance: 0.06, bombChance: 0.18, miniChance: 0.14,
+      },
+    },
+    types: {
+      normal: { color: "#ff8a3d", inner: "#ff3b5c", scoreMul: 1 },
+      mini: { color: "#6c5ce7", inner: "#a29bfe", scoreMul: 3, sizeMul: 0.5 },
+      gold: { color: "#ffd24a", inner: "#ff9f1a", scoreMul: 1, flat: 70, sizeMul: 1.12 },
+      bomb: { color: "#2a2f3a", inner: "#ff3b5c", penalty: 35 },
+    },
+  },
 };

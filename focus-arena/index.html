@@ -27,6 +27,7 @@
     <div class="hud-right">
       <div class="stat" title="Sequência de dias com foco"><span id="streakVal">0</span>🔥</div>
       <div class="stat" title="Minutos focados no total"><span id="focusMinVal">0</span>min</div>
+      <button class="icon-btn" id="btnBreak" title="Pausa rápida — desfocar na arena de mira (P)">☕</button>
       <button class="icon-btn" id="btnBrain" title="Brain dump (B)">🧠</button>
       <button class="icon-btn" id="btnWa" title="Mensagens">💬<span class="badge" id="waBadge" hidden>0</span></button>
       <button class="icon-btn" id="btnConfig" title="Configurações">⚙️</button>
@@ -76,6 +77,13 @@
     <!-- VIEW: Foco -->
     <section class="view" id="view-focus" hidden>
       <div class="focus-stage">
+        <div class="boss" id="bossBox">
+          <div class="boss-emoji" id="bossEmoji">👾</div>
+          <div class="boss-info">
+            <div class="boss-name" id="bossName">Boss</div>
+            <div class="boss-hp" title="A vida do boss cai conforme você foca"><div class="boss-hp-fill" id="bossHpFill"></div></div>
+          </div>
+        </div>
         <div class="focus-task" id="focusTask">—</div>
         <div class="ring-wrap">
           <svg viewBox="0 0 300 300" class="ring">
@@ -95,9 +103,10 @@
         <div class="focus-actions">
           <button class="btn" id="btnPause">⏸ Pausar</button>
           <button class="btn warn" id="btnDistract">🌀 Me distraí…</button>
+          <button class="btn" id="btnAmbient" title="Ruído marrom pra concentrar (toggle)">🎧 Som ambiente</button>
           <button class="btn danger" id="btnGiveUp">Encerrar</button>
         </div>
-        <p class="focus-hint">Atalho: <b>espaço</b> pausa · <b>B</b> abre o brain dump pra parquear pensamentos.</p>
+        <p class="focus-hint">Atalho: <b>espaço</b> pausa · <b>B</b> brain dump · <b>A</b> som ambiente. Cada minuto tira a vida do boss. 💥</p>
       </div>
     </section>
 
@@ -195,7 +204,11 @@
   <!-- Toasts -->
   <div class="toast-stack" id="toasts"></div>
 
+  <!-- Camada de efeitos (confete, popups, partículas) -->
+  <canvas id="fxCanvas" aria-hidden="true"></canvas>
+
   <script src="js/config.js"></script>
+  <script src="js/fx.js"></script>
   <script src="js/seed-tasks.js"></script>
   <script src="js/state.js"></script>
   <script src="js/integrations.js"></script>

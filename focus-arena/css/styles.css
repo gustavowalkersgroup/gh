@@ -113,6 +113,7 @@ code { background: var(--bg2); padding: 1px 6px; border-radius: 6px; color: var(
 .task-card .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
 .chip.status { color: var(--txt); }
+.chip.company { color: var(--accent, #3da5ff); border-color: rgba(61, 165, 255, 0.45); background: rgba(61, 165, 255, 0.1); font-weight: 600; letter-spacing: .2px; }
 .chip.due-soon { color: var(--orange); border-color: rgba(255, 138, 61, 0.4); }
 .chip.overdue { color: var(--red); border-color: rgba(255, 59, 92, 0.4); }
 .task-actions { display: flex; gap: 8px; margin-top: 2px; }
@@ -199,6 +200,9 @@ code { background: var(--bg2); padding: 1px 6px; border-radius: 6px; color: var(
 
 /* ===== Modais ===== */
 .modal-back { position: fixed; inset: 0; background: rgba(5, 7, 11, 0.7); z-index: 80; display: grid; place-items: center; padding: 20px; backdrop-filter: blur(4px); animation: fade 0.15s; }
+/* O atributo HTML [hidden] deve sempre esconder, mesmo em elementos com display explícito
+   (.modal-back, .arena-overlay, .reward-overlay usam display:grid e venciam o [hidden] padrão). */
+[hidden] { display: none !important; }
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); width: 100%; max-width: 540px; max-height: 88vh; overflow-y: auto; padding: 22px; box-shadow: var(--shadow); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .modal h4 { margin-top: 18px; color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
@@ -240,6 +244,37 @@ code { background: var(--bg2); padding: 1px 6px; border-radius: 6px; color: var(
 
 body.minimal .reward-card .big-xp { text-shadow: none; }
 body.minimal .task-card:hover { transform: none; }
+
+/* ===== Overhaul "Boss Hunt": FX, boss, modos, crítico ===== */
+#fxCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 120; }
+#fxFlash { position: fixed; inset: 0; pointer-events: none; z-index: 110; opacity: 0; background: transparent; }
+
+/* Boss battle (foco) */
+.boss { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 16px; max-width: 560px; width: 100%; }
+.boss-emoji { font-size: 40px; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
+.boss-emoji.boss-hit { animation: bossHit 0.4s; }
+.boss-info { flex: 1; text-align: left; }
+.boss-name { font-weight: 800; letter-spacing: 0.5px; font-size: 14px; color: var(--orange); text-transform: uppercase; }
+.boss-hp { height: 12px; background: var(--bg2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.boss-hp-fill { height: 100%; width: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--red), var(--orange)); transition: width 1s linear; }
+@keyframes bossHit { 0% { transform: translateX(0) rotate(0); } 25% { transform: translateX(-6px) rotate(-8deg); } 50% { transform: translateX(6px) rotate(8deg) scale(1.15); } 100% { transform: translateX(0) rotate(0); } }
+
+/* Modos da arena */
+.mode-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+.mode-btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; min-width: 150px; text-align: center; color: var(--txt); transition: transform 0.1s, border-color 0.2s, box-shadow 0.2s; }
+.mode-btn:hover { transform: translateY(-2px); border-color: var(--accent); }
+.mode-btn.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mode-btn b { display: block; font-size: 15px; }
+.mode-btn small { color: var(--muted); font-size: 11px; }
+
+/* Som ambiente ativo */
+#btnAmbient.active { border-color: var(--accent2); color: var(--accent); box-shadow: 0 0 12px rgba(108, 92, 231, 0.4); }
+
+/* Recompensa crítica / subida de patente */
+.reward-card .big-xp.crit { background: linear-gradient(135deg, #ffd24a, #ff9f1a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 40px rgba(255, 210, 74, 0.6); }
+.reward-card .crit-tag { font-size: 22px; font-weight: 900; color: #ffd24a; letter-spacing: 1px; margin-top: 4px; animation: pop 0.3s; }
+.reward-card .rankup { font-size: 20px; font-weight: 800; color: var(--accent2); margin-top: 8px; }
+body.minimal .reward-card .big-xp.crit { text-shadow: none; }
 
 /* ===== Responsivo ===== */
 @media (max-width: 900px) {

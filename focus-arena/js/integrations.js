@@ -23,6 +23,42 @@ window.FA = window.FA || {};
     return s.replace(/\/$/, "");
   }
 
+  // Extrai o nome da empresa/cliente a partir do título da tarefa-RAIZ.
+  // No workspace, cada cliente é uma tarefa de topo e o trabalho são subtarefas dela.
+  // Os títulos de topo vêm com rótulos de processo que removemos:
+  //   "ATIVAÇÃO DE NOVO CLIENTE - LEVE DELIVERY"  -> LEVE DELIVERY
+  //   "[IMPLEMENTAÇÃO] - VERDENA" / "[IMPLEMENTAÇÃO] Vint Mens Wear" -> VERDENA / Vint Mens Wear
+  //   "IMPLEMENTAÇÃO - ATOMO" -> ATOMO
+  //   "Hiven Cosméticos — Plano de Automação…" -> Hiven Cosméticos (corta a descrição)
+  function companyFromName(name) {
+    if (!name) return null;
+    let c = String(name).trim();
+    c = c.replace(/^\s*\[[^\]]*\]\s*/, "");                         // tira [IMPLEMENTAÇÃO] etc.
+    c = c.replace(/^\s*(ativa[çc][ãa]o de novo cliente|implementa[çc][ãa]o|implanta[çc][ãa]o|onboarding)\b\s*/i, ""); // rótulos de processo
+    c = c.replace(/^\s*[-–—:]\s*/, "");                             // separador inicial remanescente
+    c = c.split(/\s[–—]\s|\s-\s/)[0];                               // corta descrição após traço/travessão
+    c = c.trim().replace(/[.…\s]+$/, "");                           // limpa pontuação/espaço final
+    return c || null;
+  }
+
+  // Dado o array cru da API, resolve a empresa de CADA tarefa subindo até a raiz
+  // (a tarefa de topo = o cliente) e devolve as tarefas já normalizadas.
+  function withCompanies(rawTasks) {
+    const byId = {};
+    rawTasks.forEach((t) => { byId[t.id] = t; });
+    const rootName = (t) => {
+      let cur = t, guard = 0;
+      while (cur && cur.parent && byId[cur.parent] && guard++ < 25) cur = byId[cur.parent];
+      return cur ? cur.name : t.name;
+    };
+    return rawTasks.map((t) => {
+      const n = normalizeTask(t);
+      const c = companyFromName(rootName(t));
+      if (c) n.company = c;
+      return n;
+    });
+  }
+
   function normalizeTask(t) {
     // aceita tanto o formato do seed quanto o cru da API do ClickUp
     const status = (t.status && t.status.status) || t.status || "a fazer";
@@ -33,6 +69,7 @@ window.FA = window.FA || {};
     return {
       id: t.id,
       name: t.name || "(sem título)",
+      company: companyFromName(t.name),
       status: typeof status === "string" ? status.toLowerCase() : "a fazer",
       priority: ["urgent", "high", "normal", "low"].includes(priority) ? priority : "none",
       due,
@@ -43,6 +80,7 @@ window.FA = window.FA || {};
 
   const ClickUp = {
     mode: "offline", // offline | server | token
+    doneStatus: null, // nome do status "concluído" REAL da lista (ex.: "feito"); detectado da API
 
     async detect() {
       const base = serverBase();
@@ -59,29 +97,58 @@ window.FA = window.FA || {};
       return this.mode;
     },
 
+    // Descobre o nome do status do tipo "closed" da lista. Varia por workspace
+    // ("feito", "done", "concluído"…); sem isso o write-back falha por status inválido.
+    async loadListMeta(listId) {
+      try {
+        let r;
+        if (this.mode === "server") r = await fetch(serverBase() + "/api/clickup/list/" + listId);
+        else if (this.mode === "token") r = await fetch(cfg.clickup.apiBase + "/list/" + listId, { headers: { Authorization: FA.State.data.settings.clickupToken } });
+        else return;
+        if (r && r.ok) {
+          const j = await r.json();
+          const closed = (j.statuses || []).find((s) => s.type === "closed");
+          if (closed && closed.status) this.doneStatus = closed.status;
+        }
+      } catch (e) { /* mantém fallback */ }
+    },
+
+    // A API do ClickUp pagina em 100 tarefas/página. Buscamos TODAS as páginas
+    // até last_page=true (senão o jogo só mostraria as 100 primeiras e subtarefas
+    // ficariam órfãs da sua raiz/empresa).
+    async _fetchAllPages(base, token) {
+      let all = [], page = 0, ok = false;
+      const headers = token ? { Authorization: token } : undefined;
+      while (page < 30) {
+        const sep = base.includes("?") ? "&" : "?";
+        const r = await fetch(base + sep + "page=" + page, headers ? { headers } : undefined);
+        if (!r.ok) break;
+        ok = true;
+        const j = await r.json();
+        const tasks = j.tasks || [];
+        all = all.concat(tasks);
+        if (j.last_page === true || tasks.length === 0) break;
+        page++;
+      }
+      return { ok, tasks: all };
+    },
+
     async fetchTasks() {
       const listId = FA.State.data.settings.listId || cfg.clickup.listId;
       await this.detect();
+      await this.loadListMeta(listId);
 
       if (this.mode === "server") {
         try {
-          const r = await fetch(serverBase() + "/api/clickup/list/" + listId + "/task?subtasks=true&include_closed=false");
-          if (r.ok) {
-            const j = await r.json();
-            return { source: "ClickUp (ao vivo)", tasks: (j.tasks || []).map(normalizeTask) };
-          }
+          const { ok, tasks } = await this._fetchAllPages(serverBase() + "/api/clickup/list/" + listId + "/task?subtasks=true&include_closed=false");
+          if (ok) return { source: "ClickUp (ao vivo)", tasks: withCompanies(tasks) };
         } catch (e) {}
       }
 
       if (this.mode === "token") {
         try {
-          const r = await fetch(cfg.clickup.apiBase + "/list/" + listId + "/task?subtasks=true", {
-            headers: { Authorization: FA.State.data.settings.clickupToken },
-          });
-          if (r.ok) {
-            const j = await r.json();
-            return { source: "ClickUp (token)", tasks: (j.tasks || []).map(normalizeTask) };
-          }
+          const { ok, tasks } = await this._fetchAllPages(cfg.clickup.apiBase + "/list/" + listId + "/task?subtasks=true&include_closed=false", FA.State.data.settings.clickupToken);
+          if (ok) return { source: "ClickUp (token)", tasks: withCompanies(tasks) };
         } catch (e) { /* provável CORS — cai no seed */ }
       }
 
@@ -91,7 +158,7 @@ window.FA = window.FA || {};
     // Concluir tarefa (write-back). Sem permissão/conexão, vira no-op "local".
     async completeTask(task) {
       if (!FA.State.data.settings.writeBack) return { ok: true, local: true };
-      const body = JSON.stringify({ status: "done" });
+      const body = JSON.stringify({ status: this.doneStatus || "done" });
       const headers = { "Content-Type": "application/json" };
       try {
         if (this.mode === "server") {
