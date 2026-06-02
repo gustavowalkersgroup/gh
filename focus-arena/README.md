@@ -92,8 +92,33 @@ Se você definir `WHATSAPP_SHARED_SECRET`, mande também o header `x-fa-secret: 
 O jogo busca as mensagens sozinho (polling a cada 4s, só com a aba visível). Também há um
 `BroadcastChannel("focus-arena-wa")` caso você prefira empurrar via extensão/script local.
 
-> Dica: você tem o **n8n** conectado — dá pra montar um fluxo *"WhatsApp → classifica urgência
-> com IA → HTTP Request POST /api/whatsapp"* em poucos nós.
+### Fluxo n8n pronto (triagem de urgência com IA)
+
+Já existe um workflow no n8n — **"Focus Arena - Triagem de WhatsApp"** — que faz a ponte com
+classificação de urgência por IA. Arquitetura em dois saltos:
+
+```
+IA de leitura do WhatsApp
+        │  POST  { from, text }
+        ▼
+n8n: webhook /webhook/whatsapp-in
+        │
+        ▼  classifica urgência (OpenAI) → low | normal | high
+        │
+        ▼  POST { from, text, urgency }
+Focus Arena: /api/whatsapp   ──►  vira "escudo" durante o foco
+```
+
+Para ligar:
+1. Abra o workflow no n8n e, no nó **"Enviar pro Focus Arena"**, troque a URL pelo endereço
+   acessível do seu Focus Arena (ex.: `https://SEU-HOST/api/whatsapp` — um túnel tipo ngrok
+   ou um deploy; `localhost` não é alcançável pelo n8n).
+2. **Ative** o workflow. A URL de produção do webhook fica `https://<seu-n8n>/webhook/whatsapp-in`.
+3. Aponte sua IA de leitura do WhatsApp para fazer `POST` nessa URL do n8n (em vez de direto no jogo).
+
+A credencial de OpenAI é reaproveitada automaticamente; o nó HTTP não precisa de credencial
+(a menos que você use `WHATSAPP_SHARED_SECRET` — aí adicione um header `x-fa-secret` via
+credencial *Header Auth* no nó HTTP).
 
 ---
 

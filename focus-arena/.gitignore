@@ -1,0 +1,9 @@
+# Segredos e configuração local — NUNCA commitar
+.env
+.env.*
+!.env.example
+
+# Dependências / build (caso evolua)
+node_modules/
+dist/
+*.log
