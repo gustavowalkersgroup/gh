@@ -171,6 +171,7 @@
     app.focus = {
       task, total: mins * 60, left: mins * 60, paused: false,
       distractions: 0, shielded: 0, lastNudge: 0, interval: null,
+      endAt: Date.now() + mins * 60 * 1000, pauseStart: null,
     };
     const boss = (cfg.bossByPriority && cfg.bossByPriority[task.priority]) || cfg.bossByPriority.none;
     $("#bossEmoji").textContent = boss.emoji;
@@ -203,7 +204,9 @@
   function tickFocus() {
     const f = app.focus;
     if (!f || f.paused) return;
-    f.left--;
+    // Relógio real (não conta ticks): imune ao estrangulamento de timers em abas
+    // em segundo plano — o tempo restante fica sempre correto.
+    f.left = Math.max(0, Math.round((f.endAt - Date.now()) / 1000));
     updateRing();
     // nudge de bem-estar a cada ~10 min (e nunca nos últimos 60s)
     const elapsed = f.total - f.left;
@@ -224,6 +227,9 @@
   function togglePause() {
     const f = app.focus; if (!f) return;
     f.paused = !f.paused;
+    // pausar congela o relógio; retomar empurra o fim pra frente pelo tempo parado
+    if (f.paused) f.pauseStart = Date.now();
+    else if (f.pauseStart) { f.endAt += Date.now() - f.pauseStart; f.pauseStart = null; }
     if (FA.FX) FA.FX.sfx("ui");
     $("#btnPause").textContent = f.paused ? "▶ Retomar" : "⏸ Pausar";
     $("#ringState").textContent = f.paused ? "PAUSADO" : "FOCO";
@@ -298,24 +304,31 @@
     wireModeButtons(ov);
   }
 
+  function tickBreak() {
+    if (app.breakEndAt == null) return;
+    app.breakLeft = Math.max(0, Math.round((app.breakEndAt - Date.now()) / 1000));
+    if (app.breakLeft <= 0) {
+      clearInterval(app.breakInterval);
+      app.breakInterval = null;
+      app.breakEndAt = null;
+      $("#breakLeft").textContent = "acabou";
+      toast("good", "⏰ Pausa encerrada. Bora pro próximo alvo!");
+    } else {
+      $("#breakLeft").textContent = fmtClock(app.breakLeft);
+    }
+  }
+
   function startBreak() {
     showView("arena");
     const breakSec = State.data.settings.breakMin * 60;
     app.breakLeft = breakSec;
+    app.breakEndAt = Date.now() + breakSec * 1000;
     $("#breakLeft").textContent = fmtClock(breakSec);
     resetArenaOverlay();
     $("#arenaOverlay").hidden = false;
     $("#btnArenaAgain").hidden = true;
     clearInterval(app.breakInterval);
-    app.breakInterval = setInterval(() => {
-      app.breakLeft--;
-      $("#breakLeft").textContent = fmtClock(app.breakLeft);
-      if (app.breakLeft <= 0) {
-        clearInterval(app.breakInterval);
-        $("#breakLeft").textContent = "acabou";
-        toast("good", "⏰ Pausa encerrada. Bora pro próximo alvo!");
-      }
-    }, 1000);
+    app.breakInterval = setInterval(tickBreak, 1000);
   }
 
   function startArenaRound(modeKey) {
@@ -363,6 +376,8 @@
 
   function goMissions() {
     clearInterval(app.breakInterval);
+    app.breakInterval = null;
+    app.breakEndAt = null;
     if (app.arena) app.arena.stop();
     if (FA.FX) FA.FX.ambientStop();
     showView("missions");
@@ -575,6 +590,13 @@
     $$(".modal-back").forEach((mb) => mb.addEventListener("click", (e) => {
       if (e.target === mb) { mb.hidden = true; saveConfigFromForm(); }
     }));
+
+    // ao voltar pra aba, recalcula os relógios na hora (corrige drift de timer em background)
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      if (app.inFocus && app.focus && !app.focus.paused) tickFocus();
+      if (app.breakEndAt != null) tickBreak();
+    });
 
     // atalhos
     document.addEventListener("keydown", (e) => {
