@@ -12,6 +12,8 @@ window.FA = window.FA || {};
 
 (function () {
   function now() { return performance.now(); }
+  const TAU = Math.PI * 2;
+  const rnd = (a, b) => a + Math.random() * (b - a);
 
   // Compat: FA.beep continua existindo (usado em app.js), roteando pro FX.
   function beep(freq, dur, type) {
@@ -58,6 +60,8 @@ window.FA = window.FA || {};
       this.score = 0; this.combo = 0; this.bestCombo = 0;
       this.hits = 0; this.shots = 0; this.goldHits = 0; this.bombHits = 0;
       this.targets = [];
+      this.lastBomb = 0;
+      this.bgShapes = this._makeBgShapes();
       this.running = true;
       this._onTick = onTick; this._onEnd = onEnd;
       this._loop();
@@ -86,18 +90,23 @@ window.FA = window.FA || {};
       return "normal";
     }
 
-    _spawn() {
+    _spawn(opts) {
+      opts = opts || {};
       const m = this.mode, d = this._difficulty();
-      const type = this._pickType();
+      let type = opts.forceType || this._pickType();
+      if (opts.noBomb && type === "bomb") type = "normal";
       const tcfg = this.TYPES[type] || this.TYPES.normal;
       const baseMax = m.sizeMax - d * (m.sizeMax - m.sizeMin) * 0.7;
       let r = m.sizeMin + Math.random() * Math.max(3, baseMax - m.sizeMin);
       if (tcfg.sizeMul) r *= tcfg.sizeMul;
       const pad = r + 10;
+      let life = m.lifeMax - d * (m.lifeMax - m.lifeMin);
+      // No modo "aparece ao acertar": alvos bons persistem até o clique; bombas somem sozinhas.
+      if (m.spawnOnHit) life = type === "bomb" ? 1500 : Infinity;
       this.targets.push({
         x: pad + Math.random() * (this.w - pad * 2),
         y: pad + Math.random() * (this.h - pad * 2),
-        r, born: now(), life: m.lifeMax - d * (m.lifeMax - m.lifeMin), hit: false, type,
+        r, born: now(), life, hit: false, type,
       });
     }
 
@@ -172,9 +181,19 @@ window.FA = window.FA || {};
       const remaining = Math.max(0, this.duration - elapsed);
       const d = this._difficulty();
 
-      const interval = this.mode.spawnMax - d * (this.mode.spawnMax - this.mode.spawnMin);
-      if (t - this.lastSpawn > interval && this.targets.length < this.mode.maxTargets) {
-        this._spawn(); this.lastSpawn = t;
+      if (this.mode.spawnOnHit) {
+        // mantém `keepAlive` alvos bons; ao acertar um, o próximo entra no frame seguinte
+        const liveMain = this.targets.reduce((a, tg) => a + (tg.type !== "bomb" ? 1 : 0), 0);
+        if (liveMain < (this.mode.keepAlive || 1)) this._spawn({ noBomb: true });
+        // bomba ocasional (some sozinha) pra dar tempero sem pressa
+        if (t - this.lastBomb > (this.mode.bombEveryMs || 3000) && this.targets.length < this.mode.maxTargets && Math.random() < 0.6) {
+          this._spawn({ forceType: "bomb" }); this.lastBomb = t;
+        }
+      } else {
+        const interval = this.mode.spawnMax - d * (this.mode.spawnMax - this.mode.spawnMin);
+        if (t - this.lastSpawn > interval && this.targets.length < this.mode.maxTargets) {
+          this._spawn(); this.lastSpawn = t;
+        }
       }
 
       this.targets = this.targets.filter((tg) => {
@@ -205,16 +224,70 @@ window.FA = window.FA || {};
       this._raf = requestAnimationFrame(() => this._loop());
     }
 
+    // Fundo procedural: formas abstratas neon que vagam, giram e pulsam.
+    // Geradas por rodada; intensidade/velocidade crescem com o combo (dopamina).
+    _makeBgShapes() {
+      const palette = ["#3da5ff", "#6c5ce7", "#2ec27e", "#ffd24a", "#ff8a3d", "#ff3b5c", "#00e0d1", "#ff5cf0"];
+      const kinds = ["blob", "poly", "ring", "tri"];
+      const shapes = [];
+      for (let i = 0; i < 16; i++) {
+        shapes.push({
+          kind: kinds[(Math.random() * kinds.length) | 0],
+          x: Math.random(), y: Math.random(),
+          vx: rnd(-0.03, 0.03), vy: rnd(-0.03, 0.03),
+          r: rnd(40, 170), sides: 3 + ((Math.random() * 4) | 0),
+          rot: rnd(0, TAU), vr: rnd(-0.5, 0.5),
+          hue: palette[(Math.random() * palette.length) | 0],
+          ph: rnd(0, TAU), pulse: rnd(0.3, 1.2),
+        });
+      }
+      return shapes;
+    }
+
+    _renderBg() {
+      const ctx = this.ctx, w = this.w, h = this.h;
+      const time = (now() - this.startTs) / 1000;
+      const combo = this.combo;
+      // base escura translúcida pra dar profundidade
+      ctx.fillStyle = "rgba(8,11,17,0.5)"; ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const intensity = 0.09 + Math.min(0.18, combo * 0.01);
+      const speed = 1 + Math.min(2.2, combo * 0.06);
+      for (const s of (this.bgShapes || [])) {
+        const px = ((s.x + s.vx * time * speed) % 1 + 1) % 1;
+        const py = ((s.y + s.vy * time * speed) % 1 + 1) % 1;
+        const cx = px * w, cy = py * h;
+        const rr = s.r * (1 + 0.28 * Math.sin(time * s.pulse + s.ph));
+        const rot = s.rot + s.vr * time * speed;
+        ctx.globalAlpha = intensity;
+        ctx.strokeStyle = s.hue; ctx.fillStyle = s.hue;
+        if (s.kind === "blob") {
+          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+          g.addColorStop(0, s.hue); g.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = g; ctx.globalAlpha = intensity * 1.5;
+          ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill();
+        } else if (s.kind === "ring") {
+          ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, rr, rot, rot + Math.PI * 1.4); ctx.stroke();
+        } else {
+          const sides = s.kind === "tri" ? 3 : s.sides;
+          ctx.lineWidth = 3; ctx.beginPath();
+          for (let k = 0; k < sides; k++) {
+            const a = rot + (k / sides) * TAU;
+            const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+            if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          }
+          ctx.closePath(); ctx.stroke();
+        }
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
     _render(d) {
       const ctx = this.ctx, t = now();
       ctx.clearRect(0, 0, this.w, this.h);
-
-      // fundo radial sutil, intensifica com combo
-      const heat = Math.min(0.22, 0.06 + this.combo * 0.008);
-      const g = ctx.createRadialGradient(this.w / 2, this.h / 2, 10, this.w / 2, this.h / 2, Math.max(this.w, this.h) / 1.2);
-      g.addColorStop(0, `rgba(61,165,255,${heat})`);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g; ctx.fillRect(0, 0, this.w, this.h);
+      this._renderBg();
 
       this.targets.forEach((tg) => {
         const age = (t - tg.born) / tg.life;

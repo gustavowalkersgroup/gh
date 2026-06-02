@@ -102,9 +102,10 @@ FA.config = {
     defaultMode: "classic",
     modes: {
       classic: {
-        label: "Clássico", emoji: "🎯", dur: 30, hint: "Equilíbrio: alvos variados",
-        sizeMax: 34, sizeMin: 16, lifeMax: 1500, lifeMin: 800, spawnMax: 900, spawnMin: 380,
-        maxTargets: 6, goldChance: 0.08, bombChance: 0.12, miniChance: 0.16,
+        label: "Clássico", emoji: "🎯", dur: 30, hint: "Calmo: o próximo alvo aparece quando você acerta",
+        sizeMax: 34, sizeMin: 18, lifeMax: 1500, lifeMin: 900, spawnMax: 900, spawnMin: 380,
+        maxTargets: 4, goldChance: 0.12, bombChance: 0, miniChance: 0.22,
+        spawnOnHit: true, keepAlive: 1, bombEveryMs: 2800,
       },
       precision: {
         label: "Precisão", emoji: "🔬", dur: 30, hint: "Poucos, pequenos, valem muito",
